@@ -242,7 +242,6 @@ public class UserVO implements Serializable {
       throws Exception {
       
 		// ......
-  }
 }
 ```
 

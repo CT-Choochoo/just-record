@@ -83,7 +83,7 @@
 
 ### 二 、并发编程的可见性，原子性与有序性问题
 
-### 2.1 原子性
+#### 2.1 原子性
 
 ​		原子性值得是一个操作是不可中断的，即时是在多线程环境下，一个操作一旦开始就不会被其他线程影响。
 
@@ -96,3 +96,266 @@ X++;  //对变量进行计算操作
 X = x+1;
 ```
 
+#### 2.2 **可见性**
+
+​		理解了指令重排现象后，可见性容易了，可见性指的是当一个线程修改了某个共享变量的值，其他线程是否能够马上得知这个修改的值。对于串行程序来说，可见性是不存在的，因为我们在任何一个操作中修改了某个变量的值，后续的操作中都能读取这个变量值，并且是修改过的新值。
+
+​		但在多线程环境中可就不一定了，前面我们分析过，由于线程对共享变量的操作都是线程拷贝到各自的工作内存进行操作后才写回到主内存中的，这就可能存在一个线程A修改了共享变量x的值，还未写回主内存时，另外一个线程B又对主内存中同一个共享变量x进行操作，但此时A线程工作内存中共享变量x对线程B来说并不可见，这种工作内存与主内存同步延迟现象就造成了可见性问题，另外指令重排以及编译器优化也可能导致可见性问题，通过前面的分析，我们知道无论是编译器优化还是处理器优化的重排现象，在多线程环境下，确实会导致程序轮序执行的问题，从而也就导致可见性问题。
+
+#### 2.3**有序性**
+
+​		有序性是指对于单线程的执行代码，我们总是认为代码的执行是按顺序依次执行的，这样的理解并没有毛病，毕竟对于单线程而言确实如此，但对于多线程环境，则可能出现乱序现象，因为程序编译成机器码指令后可能会出现指令重排现象，重排后的指令与原指令的顺序未必一致，要明白的是，在Java程序中，倘若在本线程内，所有操作都视为有序行为，如果是多线程环境下，一个线程中观察另外一个线程，所有操作都是无序的，前半句指的是单线程内保证串行语义执行的一致性，后半句则指指令重排现象和工作内存与主内存同步延迟现象。
+
+**JMM如何解决原子性&可见性&有序性问题**
+
+**代码示例参见本节课程的相关源码Demo**
+
+**原子性问题**
+
+​		除了JVM自身提供的对基本数据类型读写操作的原子性外，可以通过 synchronized和Lock实现原子性。因为synchronized和Lock能够保证任一时刻只有一个线程访问该代码块。
+
+**可见性问题**
+
+​		volatile关键字保证可见性。当一个共享变量被volatile修饰时，它会保证修改的值立即被其他的线程看到，即修改的值立即更新到主存中，当其他线程需要读取时，它会去内存中读取新值。synchronized和Lock也可以保证可见性，因为它们可以保证任一时刻只有一个线程能访问共享资源，并在其释放锁之前将修改的变量刷新到内存中。
+
+**有序性问题**
+
+​		在Java里面，可以通过volatile关键字来保证一定的“有序性”（具体原理在下一节讲述volatile关键字）。另外可以通过synchronized和Lock来保证有序性，很显然，synchronized和Lock保证每个时刻是有一个线程执行同步代码，相当于是让线程顺序执行同步代码，自然就保证了有序性。
+
+**Java内存模型**：每个线程都有自己的工作内存（类似于前面的高速缓存）。线程对变量的所有操作都必须在工作内存中进行，而不能直接对主存进行操作。并且每个线程不能访问其他线程的工作内存。Java内存模型具备一些先天的“有序性”，即不需要通过任何手段就能够得到保证的有序性，这个通常也称为happens-before 原则。如果两个操作的执行次序无法从happens-before原则推导出来，那么它们就不能保证它们的有序性，虚拟机可以随意地对它们进行重排序。
+
+**指令重排序**：java语言规范规定JVM线程内部维持顺序化语义。即只要程序的最终结果与它顺序化情况的结果相等，那么指令的执行顺序可以与代码顺序不一致，此过程叫指令的重排序。指令重排序的意义是什么？JVM能根据处理器特性（CPU多级缓存系统、多核处理器等）适当的对机器指令进行重排序，使机器指令能更符合CPU的执行特性，最大限度的发挥机器性能。
+
+下图为从源码到最终执行的指令序列示意图：
+
+​    ![0](.\img\14408)
+
+**as-if-serial语义**
+
+as-if-serial语义的意思是：不管怎么重排序（编译器和处理器为了提高并行度），（单线程）程序的执行结果不能被改变。编译器、runtime和处理器都必须遵守as-if-serial语义。
+
+为了遵守as-if-serial语义，编译器和处理器不会对存在数据依赖关系的操作做重排序，因为这种重排序会改变执行结果。但是，如果操作之间不存在数据依赖关系，这些操作就可能被编译器和处理器重排序。
+
+**happens-before 原则**
+
+只靠sychronized和volatile关键字来保证原子性、可见性以及有序性，那么编写并发程序可能会显得十分麻烦，幸运的是，从JDK 5开始，Java使用新的JSR-133内存模型，提供了happens-before 原则来辅助保证程序执行的原子性、可见性以及有序性的问题，它是判断数据是否存在竞争、线程是否安全的依据，happens-before 原则内容如下
+
+1. 程序顺序原则，即在一个线程内必须保证语义串行性，也就是说按照代码顺序执行。
+2. 锁规则 解锁(unlock)操作必然发生在后续的同一个锁的加锁(lock)之前，也就是说，如果对于一个锁解锁后，再加锁，那么加锁的动作必须在解锁动作之后(同一个锁)。
+3. volatile规则 volatile变量的写，先发生于读，这保证了volatile变量的可见性，简单的理解就是，volatile变量在每次被线程访问时，都强迫从主内存中读该变量的值，而当该变量发生变化时，又会强迫将最新的值刷新到主内存，任何时刻，不同的线程总是能够看到该变量的最新值。
+4. 线程启动规则 线程的start()方法先于它的每一个动作，即如果线程A在执行线程B的start方法之前修改了共享变量的值，那么当线程B执行start方法时，线程A对共享变量的修改对线程B可见
+5. 传递性 A先于B ，B先于C 那么A必然先于C
+6. 线程终止规则 线程的所有操作先于线程的终结，Thread.join()方法的作用是等待当前执行的线程终止。假设在线程B终止之前，修改了共享变量，线程A从线程B的join方法成功返回后，线程B对共享变量的修改将对线程A可见。
+7. 线程中断规则 对线程 interrupt()方法的调用先行发生于被中断线程的代码检测到中断事件的发生，可以通过Thread.interrupted()方法检测线程是否中断。
+8. 对象终结规则对象的构造函数执行，结束先于finalize()方法
+
+**volatile内存语义**
+
+volatile是Java虚拟机提供的轻量级的同步机制。volatile关键字有如下两个作用
+
+- 保证被volatile修饰的共享变量对所有线程总数可见的，也就是当一个线程修改了一个被volatile修饰共享变量的值，新值总是可以被其他线程立即得知。
+- 禁止指令重排序优化。
+
+**volatile的可见性**
+
+​		关于volatile的可见性作用，我们必须意识到被volatile修饰的变量对所有线程总数立即可见的，对volatile变量的所有写操作总是能立刻反应到其他线程中
+
+``` java
+public class VolatileVisibilitySample {
+    volatile boolean initFlag = false;
+    public void save(){
+        this.initFlag = true;
+        String threadname = Thread.currentThread().getName();
+        System.out.println("线程："+threadname+":修改共享变量initFlag");
+    }
+    public void load(){
+        String threadname = Thread.currentThread().getName();
+        while (!initFlag){
+            //线程在此处空跑，等待initFlag状态改变
+        }
+        System.out.println("线程："+threadname+"当前线程嗅探到initFlag的状态的改变");
+    }
+    public static void main(String[] args){
+        VolatileVisibilitySample sample = new VolatileVisibilitySample();
+        Thread threadA = new Thread(()->{
+            sample.save();
+        },"threadA");
+        Thread threadB = new Thread(()->{
+            sample.load();
+        },"threadB");
+        threadB.start();
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        threadA.start();
+    }
+}
+```
+
+> 线程A改变initFlag属性之后，线程B马上感知到
+
+**volatile无法保证原子性**
+
+
+
+```java
+//示例
+public class VolatileVisibility {
+    public static volatile int i =0;
+    public static void increase(){
+        i++;
+    }
+}
+```
+
+​		在并发场景下，i变量的任何改变都会立马反应到其他线程中，但是如此存在多条线程同时调用increase()方法的话，就会出现线程安全问题，毕竟i++;操作并不具备原子性，该操作是先读取值，然后写回一个新值，相当于原来的值加上1，分两步完成，如果第二个线程在第一个线程读取旧值和写回新值期间读取i的域值，那么第二个线程就会与第一个线程一起看到同一个值，并执行相同值的加1操作，这也就造成了线程安全失败，因此对于increase方法必须使用synchronized修饰，以便保证线程安全，需要注意的是一旦使用synchronized修饰方法后，由于synchronized本身也具备与volatile相同的特性，即可见性，因此在这样种情况下就完全可以省去volatile修饰变量。
+
+**volatile禁止重排优化**
+
+​		volatile关键字另一个作用就是禁止指令重排优化，从而避免多线程环境下程序出现乱序执行的现象，关于指令重排优化前面已详细分析过，这里主要简单说明一下volatile是如何实现禁止指令重排优化的。先了解一个概念，内存屏障(Memory Barrier）。 
+
+**硬件层的内存屏障**
+
+Intel硬件提供了一系列的内存屏障，主要有： 
+
+1. lfence，是一种Load Barrier 读屏障 
+
+2. sfence, 是一种Store Barrier 写屏障 
+
+3. mfence, 是一种全能型的屏障，具备ifence和sfence的能力 
+
+4. Lock前缀，Lock不是一种内存屏障，但是它能完成类似内存屏障的功能。Lock会对CPU总线和高速缓存加锁，可以理解为CPU指令级的一种锁。它后面可以跟ADD, ADC, AND, BTC, BTR, BTS, CMPXCHG, CMPXCH8B, DEC, INC, NEG, NOT, OR, SBB, SUB, XOR, XADD, and XCHG等指令。
+
+不同硬件实现内存屏障的方式不同，Java内存模型屏蔽了这种底层硬件平台的差异，由JVM来为不同的平台生成相应的机器码。 JVM中提供了四类内存屏障指令：
+
+| 屏障类型   | 指令示例                   | 说明                                                         |
+| ---------- | -------------------------- | ------------------------------------------------------------ |
+| LoadLoad   | Load1; LoadLoad; Load2     | 保证load1的读取操作在load2及后续读取操作之前执行             |
+| StoreStore | Store1; StoreStore; Store2 | 在store2及其后的写操作执行前，保证store1的写操作已刷新到主内存 |
+| LoadStore  | Load1; LoadStore; Store2   | 在stroe2及其后的写操作执行前，保证load1的读操作已读取结束    |
+| StoreLoad  | Store1; StoreLoad; Load2   | 保证store1的写操作已刷新到主内存之后，load2及其后的读操作才能执行 |
+
+​		内存屏障，又称内存栅栏，是一个CPU指令，它的作用有两个，一是保证特定操作的执行顺序，二是保证某些变量的内存可见性（利用该特性实现volatile的内存可见性）。由于编译器和处理器都能执行指令重排优化。如果在指令间插入一条Memory Barrier则会告诉编译器和CPU，不管什么指令都不能和这条Memory Barrier指令重排序，也就是说通过插入内存屏障禁止在内存屏障前后的指令执行重排序优化。Memory Barrier的另外一个作用是强制刷出各种CPU的缓存数据，因此任何CPU上的线程都能读取到这些数据的最新版本。总之，volatile变量正是通过内存屏障实现其在内存中的语义，即可见性和禁止重排优化。下面看一个非常典型的禁止重排优化的例子DCL，如下：
+
+```java
+public class DoubleCheckLock {
+    private volatile static DoubleCheckLock instance;
+    private DoubleCheckLock(){}
+    public static DoubleCheckLock getInstance(){
+        //第一次检测
+        if (instance==null){
+            //同步
+            synchronized (DoubleCheckLock.class){
+                if (instance == null){
+                    //多线程环境下可能会出现问题的地方
+                    instance = new  DoubleCheckLock();
+                }
+            }
+        }
+        return instance;
+    }
+}
+```
+
+​		上述代码一个经典的单例的双重检测的代码，这段代码在单线程环境下并没有什么问题，但如果在多线程环境下就可以出现线程安全问题。原因在于某一个线程执行到第一次检测，读取到的instance不为null时，instance的引用对象可能没有完成初始化。
+
+因为instance = new DoubleCheckLock();可以分为以下3步完成(伪代码)
+
+```java
+memory = allocate();//1.分配对象内存空间
+instance(memory);//2.初始化对象
+instance = memory;//3.设置instance指向刚分配的内存地址，此时instance！=null      
+```
+
+由于步骤1和步骤2间可能会重排序，如下：
+
+```java
+memory=allocate();//1.分配对象内存空间
+instance=memory;//3.设置instance指向刚分配的内存地址，此时instance！=null，但是对象还没有初始化完成！
+instance(memory);//2.初始化对象
+```
+
+​		由于步骤2和步骤3不存在数据依赖关系，而且无论重排前还是重排后程序的执行结果在单线程中并没有改变，因此这种重排优化是允许的。但是指令重排只会保证串行语义的执行的一致性(单线程)，但并不会关心多线程间的语义一致性。所以当一条线程访问instance不为null时，由于instance实例未必已初始化完成，也就造成了线程安全问题。那么该如何解决呢，很简单，我们使用volatile禁止instance变量被执行指令重排优化即可。
+
+```java
+  //禁止指令重排优化
+private volatile static DoubleCheckLock instance;
+```
+
+**volatile内存语义的实现**
+
+​		前面提到过重排序分为编译器重排序和处理器重排序。为了实现volatile内存语义，JMM会分别限制这两种类型的重排序类型。
+
+下图是JMM针对编译器制定的volatile重排序规则表。
+
+| 第一个操作 | 第二个操作：普通读写 | 第二个操作：volatile读 | 第二个操作：volatile写 |
+| ---------- | -------------------- | ---------------------- | ---------------------- |
+| 普通读写   | 可以重排             | 可以重排               | 不可以重排             |
+| volatile读 | 不可以重排           | 不可以重排             | 不可以重排             |
+| volatile写 | 可以重排             | 不可以重排             | 不可以重排             |
+
+​		举例来说，第二行最后一个单元格的意思是：在程序中，当第一个操作为普通变量的读或写时，如果第二个操作为volatile写，则编译器不能重排序这两个操作。
+
+从上图可以看出：
+
+- - 当第二个操作是volatile写时，不管第一个操作是什么，都不能重排序。这个规则确保volatile写之前的操作不会被编译器重排序到volatile写之后。
+  - 当第一个操作是volatile读时，不管第二个操作是什么，都不能重排序。这个规则确保volatile读之后的操作不会被编译器重排序到volatile读之前。
+  - 当第一个操作是volatile写，第二个操作是volatile读或写时，不能重排序。
+
+​        为了实现volatile的内存语义，编译器在生成字节码时，会在指令序列中插入内存屏障来禁止特定类型的处理器重排序。对于编译器来说，发现一个最优布置来最小化插入屏障的总数几乎不可能。为此，JMM采取保守策略。下面是基于保守策略的JMM内存屏障插入策略。
+
+- - ·在每个volatile写操作的前面插入一个StoreStore屏障。
+  - ·在每个volatile写操作的后面插入一个StoreLoad屏障。
+  - ·在每个volatile读操作的后面插入一个LoadLoad屏障。
+  - ·在每个volatile读操作的后面插入一个LoadStore屏障。
+
+上述内存屏障插入策略非常保守，但它可以保证在任意处理器平台，任意的程序中都能得到正确的volatile内存语义。
+
+下面是保守策略下，volatile写插入内存屏障后生成的指令序列示意图
+
+![image-20210406223206820](.\img\image-20210406223206820.png)
+
+​		上图中StoreStore屏障可以保证在volatile写之前，其前面的所有普通写操作已经对任意处理器可见了。这是因为StoreStore屏障将保障上面所有的普通写在volatile写之前刷新到主内存。
+
+​		这里比较有意思的是，volatile写后面的StoreLoad屏障。此屏障的作用是避免volatile写与 后面可能有的volatile读/写操作重排序。因为编译器常常无法准确判断在一个volatile写的后面 是否需要插入一个StoreLoad屏障（比如，一个volatile写之后方法立即return）。为了保证能正确 实现volatile的内存语义，JMM在采取了保守策略：在每个volatile写的后面，或者在每个volatile 读的前面插入一个StoreLoad屏障。从整体执行效率的角度考虑，JMM最终选择了在每个 volatile写的后面插入一个StoreLoad屏障。因为volatile写-读内存语义的常见使用模式是：一个 写线程写volatile变量，多个读线程读同一个volatile变量。当读线程的数量大大超过写线程时，选择在volatile写之后插入StoreLoad屏障将带来可观的执行效率的提升。从这里可以看到JMM 在实现上的一个特点：首先确保正确性，然后再去追求执行效率。
+
+下图是在保守策略下，volatile读插入内存屏障后生成的指令序列示意图
+
+![image-20210406223233270](.\img\image-20210406223233270.png)
+
+​		上图中LoadLoad屏障用来禁止处理器把上面的volatile读与下面的普通读重排序。LoadStore屏障用来禁止处理器把上面的volatile读与下面的普通写重排序。
+
+​		上述volatile写和volatile读的内存屏障插入策略非常保守。在实际执行时，只要不改变 volatile写-读的内存语义，编译器可以根据具体情况省略不必要的屏障。下面通过具体的示例
+
+代码进行说明。
+
+```java
+class VolatileBarrierExample {
+       int a;
+       volatile int v1 = 1;
+       volatile int v2 = 2;
+       void readAndWrite() {
+           int i = v1;　　    // 第一个volatile读
+           int j = v2;    　  // 第二个volatile读
+           a = i + j;         // 普通写
+           v1 = i + 1;     　 // 第一个volatile写
+          v2 = j * 2;    　  // 第二个 volatile写
+       }
+}
+```
+
+针对readAndWrite()方法，编译器在生成字节码时可以做如下的优化。
+
+![image-20210406223315704](.\img\image-20210406223315704.png)
+
+​		注意，最后的StoreLoad屏障不能省略。因为第二个volatile写之后，方法立即return。此时编 译器可能无法准确断定后面是否会有volatile读或写，为了安全起见，编译器通常会在这里插 入一个StoreLoad屏障。
+
+​		上面的优化针对任意处理器平台，由于不同的处理器有不同“松紧度”的处理器内存模 型，内存屏障的插入还可以根据具体的处理器内存模型继续优化。以X86处理器为例，图3-21 中除最后的StoreLoad屏障外，其他的屏障都会被省略。
+
+​		前面保守策略下的volatile读和写，在X86处理器平台可以优化成如下图所示。前文提到过，X86处理器仅会对写-读操作做重排序。X86不会对读-读、读-写和写-写操作 做重排序，因此在X86处理器中会省略掉这3种操作类型对应的内存屏障。在X86中，JMM仅需 在volatile写后面插入一个StoreLoad屏障即可正确实现volatile写-读的内存语义。这意味着在 X86处理器中，volatile写的开销比volatile读的开销会大很多（因为执行StoreLoad屏障开销会比
+
+较大）。
+
+![image-20210406223343298](.\img\image-20210406223343298.png)
